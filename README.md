@@ -209,7 +209,7 @@ You can run this entire project directly in Google Colab. Copy the cells below t
 !apt-get install -y ffmpeg
 ```
 
-### 3. Set up your Gemini API key
+### 3. Set your Gemini API key
 
 ```python
 # Set your Gemini API key
@@ -220,47 +220,24 @@ os.environ['GEMINI_API_KEY'] = "YOUR_GEMINI_API_KEY"  # Replace with your actual
 !python -c "import os; from google import genai; genai.configure(api_key=os.environ['GEMINI_API_KEY']); print('API key configured successfully!')"
 ```
 
-### 4. Download the Google Drive API credentials
+### 4. Run the program directly
 
-The code uses the Google Drive API via a service account for file operations. You need to:
-
-```python
-# Upload your Google Drive service account credentials
-# This is a placeholder - in Colab, you'll need to upload your credentials file
-# Then run:
-import json
-with open('drive_credentials.json', 'r') as f:
-    print("Credentials file loaded successfully!")
-    
-# If you don't have credentials yet, you can run the test function to download them:
-from src.utils.google_drive_utils import test_google_drive_api
-test_google_drive_api()  # This will attempt to download the credentials file
-```
-
-### 5. Run the story generator
+The simplest way to run the entire pipeline is to execute the main.py file directly:
 
 ```python
-# Import and run the main generator
-from src.services.main_generator import generate
-
-# Generate a story with default settings
-result = generate(use_prompt_generator=True)
-
-# Display the generated video if available
-from IPython.display import HTML
-if result['output_path'] and os.path.exists(result['output_path']):
-    video_path = result['output_path']
-    print(f"Video generated at: {video_path}")
-    HTML(f"""
-    <video width="640" height="360" controls>
-      <source src="{video_path}" type="video/mp4">
-    </video>
-    """)
+# Run the main program
+!python src/main.py
 ```
 
-### 6. Results
+That's it! The program will:
+- Test the Google Drive API connection
+- Generate a story using the Gemini API
+- Create images for each scene
+- Generate audio narration
+- Combine everything into a video
+- Upload the results to Google Drive
 
-The generated videos, thumbnails, and metadata will be uploaded to Google Drive automatically through the API using the functions in `google_drive_upload.py`. You'll see the Google Drive folder IDs in the output.
+All output will be displayed in the Colab notebook, including any generated images and the final video.
 
 ## Pipeline Flow
 {{ ... }}
