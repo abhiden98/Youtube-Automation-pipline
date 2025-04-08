@@ -11,6 +11,7 @@ from IPython.display import display, Image, Audio, HTML
 
 from src.generators.prompt_generation import generate_prompt
 from src.utils.api_utils import retry_api_call, get_safety_settings
+from src.services.main_generator import generate
 
 def retry_story_generation(use_prompt_generator=True, prompt_input="Create a unique children's story with a different animal character, setting, and adventure theme."):
     """
