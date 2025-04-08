@@ -209,26 +209,32 @@ You can run this entire project directly in Google Colab. Copy the cells below t
 !apt-get install -y ffmpeg
 ```
 
-### 3. Set up your Google Drive (for storage)
-
-```python
-# Mount Google Drive for storing outputs
-from google.colab import drive
-drive.mount('/content/drive')
-
-# Create output directory
-!mkdir -p /content/drive/MyDrive/AI_Stories
-```
-
-### 4. Set your API keys
+### 3. Set up your Gemini API key
 
 ```python
 # Set your Gemini API key
 import os
-os.environ['GEMINI_API_KEY'] = "YOUR_GEMINI_API_KEY"
+os.environ['GEMINI_API_KEY'] = "YOUR_GEMINI_API_KEY"  # Replace with your actual Gemini API key
 
 # Test the configuration
 !python -c "import os; from google import genai; genai.configure(api_key=os.environ['GEMINI_API_KEY']); print('API key configured successfully!')"
+```
+
+### 4. Download the Google Drive API credentials
+
+The code uses the Google Drive API via a service account for file operations. You need to:
+
+```python
+# Upload your Google Drive service account credentials
+# This is a placeholder - in Colab, you'll need to upload your credentials file
+# Then run:
+import json
+with open('drive_credentials.json', 'r') as f:
+    print("Credentials file loaded successfully!")
+    
+# If you don't have credentials yet, you can run the test function to download them:
+from src.utils.google_drive_utils import test_google_drive_api
+test_google_drive_api()  # This will attempt to download the credentials file
 ```
 
 ### 5. Run the story generator
@@ -252,9 +258,9 @@ if result['output_path'] and os.path.exists(result['output_path']):
     """)
 ```
 
-### 6. Explore results in Google Drive
+### 6. Results
 
-Your generated videos, thumbnails, and metadata will be available in your Google Drive under the folder structure created during the upload process.
+The generated videos, thumbnails, and metadata will be uploaded to Google Drive automatically through the API using the functions in `google_drive_upload.py`. You'll see the Google Drive folder IDs in the output.
 
 ## Pipeline Flow
 {{ ... }}
