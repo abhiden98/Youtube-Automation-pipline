@@ -11,132 +11,147 @@ from IPython.display import display, Image, Audio, HTML
 
 from src.generators.prompt_generation import generate_prompt
 from src.utils.api_utils import retry_api_call, get_safety_settings
-from src.services.main_generator import generate
 
 def retry_story_generation(use_prompt_generator=True, prompt_input="Create a unique children's story with a different animal character, setting, and adventure theme."):
     """
     Persistently retries story generation when image loading fails or JSON errors occur.
-    This function will keep retrying every 7 seconds until all conditions are met:
-    1. No JSON errors in stream processing
-    2. Images are properly loaded
-    3. At least 6 story segments are generated
     
     Args:
-        use_prompt_generator: Whether to use the prompt generator
-        prompt_input: The prompt input to guide story generation
+        use_prompt_generator: Boolean to control whether to use prompt generator
+        prompt_input: Base prompt input to use or elaborate on
         
     Returns:
-        The result of the successful generation
+        The generated story and image files if successful, or None on persistent failure
     """
-    import time
-    import threading
+    print("\n--- Starting generation (attempting 16:9 via prompt) ---\n")
     
-    # Set initial state
-    success = False
-    max_retries = 1000  # Set a reasonable limit
-    retry_count = 0
-    retry_delay = 7  # Run every 7 seconds as specified
-    
-    # Create a container for results
-    results = {"story_text": None, "image_files": [], "output_path": None, "thumbnail_path": None, "metadata": None}
-    
-    # Create a global temp directory for flag files
-    import tempfile
-    import os
-    temp_dir = tempfile.mkdtemp()
-    
-    def check_generation_status():
-        # This helper function checks if the generation was successful
-        # Based on the presence of images and sufficient story segments
-        nonlocal success
+    # Create a wrapper function to handle story generation
+    def generation_wrapper(use_prompt_generator, prompt_input):
+        # Import here to avoid circular imports
+        import tempfile
+        from google import genai
+        from google.genai import types
+        from IPython.display import display, Image, Audio, HTML
+        from src.generators.prompt_generation import generate_prompt
+        from src.utils.api_utils import retry_api_call, get_safety_settings
         
-        if not results["story_text"] or not results["image_files"]:
-            return False
+        print(f"⏳ Starting generation with prompt: {prompt_input[:50]} ...")
         
-        # Check if we have at least 6 story segments
         try:
-            story_segments = collect_complete_story(results["story_text"], return_segments=True)
-            if len(story_segments) < 6:
-                print(f"⚠️ Insufficient story segments: {len(story_segments)} (need at least 6)")
-                return False
-                
-            # Check if we have sufficient images
-            if len(results["image_files"]) < 6:
-                print(f"⚠️ Insufficient images: {len(results['image_files'])} (need at least 6)")
-                return False
+            # Initialize client
+            client = genai.Client(
+                api_key=os.environ.get("GEMINI_API_KEY"),
+            )
             
-            # NEW: Check if video was successfully generated
-            if results["output_path"] and os.path.exists(results["output_path"]):
-                print(f"✅ Video successfully generated: {results['output_path']}")
-                # Note: We don't need to check for a flag file anymore since we use sys.exit()
-                # after successful Google Drive upload
-                
-            # If we get here, generation was successful
-            success = True
-            return True
-        except Exception as e:
-            print(f"⚠️ Error checking generation status: {e}")
-            return False
-    
-    # Define a wrapper function that will capture the results
-    def generation_wrapper():
-        nonlocal results
-        try:
-            # Create a clean temporary directory for each attempt
-            import tempfile
-            import os
+            # Setup model and prompt
+            model = "gemini-2.0-flash-exp-image-generation"
+            
+            # Get prompt
+            if use_prompt_generator:
+                generated_prompt = retry_api_call(generate_prompt, prompt_input)
+                if generated_prompt and generated_prompt.strip():
+                    prompt_text = generated_prompt
+                else:
+                    prompt_text = """Generate a story about a white baby goat named Pip going on an adventure in a farm in a highly detailed 3d cartoon animation style. For each scene, generate a high-quality, photorealistic image **in landscape orientation suitable for a widescreen (16:9 aspect ratio) YouTube video**. Ensure maximum detail, vibrant colors, and professional lighting."""
+            else:
+                prompt_text = prompt_input
+            
+            # Prepare content
+            contents = [
+                types.Content(
+                    role="user",
+                    parts=[
+                        types.Part.from_text(text=prompt_text),
+                    ],
+                ),
+            ]
+            
+            # Configure generation
+            generate_content_config = types.GenerateContentConfig(
+                response_modalities=["image", "text"],
+                response_mime_type="text/plain",
+                safety_settings=get_safety_settings(),
+            )
+            
+            # Create temp directory for images
             temp_dir = tempfile.mkdtemp()
+            story_text = ""
+            image_files = []
             
-            # Call the main generate function
-            print(f"\n🔄 Retry attempt #{retry_count+1} for story generation...")
-            print(f"⏳ Starting generation with prompt: {prompt_input[:50]}...")
+            # Generate content using API
+            stream = retry_api_call(
+                lambda: client.models.generate_content_stream(
+                    model=model,
+                    contents=contents,
+                    config=generate_content_config,
+                )
+            )
             
-            # This is a wrapper that will call the actual generate function
-            # but will capture its outputs for our status checks
-            result = generate(use_prompt_generator=use_prompt_generator, prompt_input=prompt_input)
-            
-            # Capture variables from the generate function's scope if possible
-            if 'story_text' in locals() and locals()['story_text']:
-                results["story_text"] = locals()['story_text']
-            if 'image_files' in locals() and locals()['image_files']:
-                results["image_files"] = locals()['image_files']
-            if 'output_path' in locals() and locals()['output_path']:
-                results["output_path"] = locals()['output_path']
-            if 'thumbnail_path' in locals() and locals()['thumbnail_path']:
-                results["thumbnail_path"] = locals()['thumbnail_path']
-            if 'metadata' in locals() and locals()['metadata']:
-                results["metadata"] = locals()['metadata']
+            # Process response stream
+            image_found = False
+            for chunk in stream:
+                try:
+                    if not hasattr(chunk, 'candidates') or not chunk.candidates:
+                        continue
+                    
+                    part = chunk.candidates[0].content.parts[0]
+                    
+                    if hasattr(part, 'inline_data') and part.inline_data:
+                        image_found = True
+                        inline_data = part.inline_data
+                        image_data = inline_data.data
+                        
+                        # Save image
+                        img_path = os.path.join(temp_dir, f"image_{len(image_files)}.jpg")
+                        with open(img_path, "wb") as f:
+                            f.write(image_data)
+                        image_files.append(img_path)
+                        
+                        # Display image
+                        display(Image(data=image_data))
+                    
+                    elif hasattr(part, 'text') and part.text:
+                        story_text += part.text
+                        print(part.text, end="")
                 
-            # Check if generation was successful
-            check_generation_status()
+                except Exception as e:
+                    print(f"⚠️ Error processing chunk: {e}")
+            
+            return {
+                "story_text": story_text,
+                "image_files": image_files,
+                "temp_dir": temp_dir
+            }
+        
         except Exception as e:
             print(f"⚠️ Error in generation attempt: {e}")
-            import traceback
             traceback.print_exc()
+            return None
     
-    # Main retry loop
-    while not success and retry_count < max_retries:
+    # Retry logic
+    max_retries = 5
+    retry_count = 0
+    retry_delay = 7
+    result = None
+    
+    while retry_count < max_retries:
         retry_count += 1
+        if retry_count > 1:
+            print(f"\n🔄 Retry attempt #{retry_count} for story generation...")
         
-        # Start generation in current thread (blocking)
-        generation_wrapper()
+        result = generation_wrapper(use_prompt_generator, prompt_input)
         
-        # If successful, break the loop
-        if success:
-            print(f"✅ Story generation successful after {retry_count} attempts!")
-            break
-            
-        # If not successful, wait and retry
-        print(f"⚠️ Generation attempt #{retry_count} failed or incomplete.")
-        print(f"🔄 Retrying in {retry_delay} seconds...")
-        time.sleep(retry_delay)
+        if result and result["story_text"] and len(result["image_files"]) >= 4:
+            print("\n✅ Story generation successful!")
+            return result
+        
+        if retry_count < max_retries:
+            print(f"⚠️ Generation attempt #{retry_count} failed or incomplete.")
+            print(f"🔄 Retrying in {retry_delay} seconds...")
+            time.sleep(retry_delay)
     
-    if not success:
-        print(f"⚠️ Maximum retry attempts ({max_retries}) reached without success.")
-    
-    # Return the results regardless of success state
-    # This allows partial results to be used if available
-    return results
+    print("\n❌ All story generation attempts failed.")
+    return None
 
 def collect_complete_story(raw_text, return_segments=False):
     """Collect and clean the complete story text from Gemini's output"""

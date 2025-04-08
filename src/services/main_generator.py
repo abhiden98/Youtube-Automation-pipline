@@ -14,7 +14,6 @@ from PIL import Image as PILImage
 
 from src.generators.prompt_generation import generate_prompt
 from src.utils.api_utils import retry_api_call, get_safety_settings
-from src.generators.story_generator import retry_story_generation, collect_complete_story
 from src.generators.metadata_generator import generate_seo_metadata, default_seo_metadata, generate_thumbnail
 from src.utils.google_drive_utils import download_file_from_google_drive, upload_text_file_to_drive
 
@@ -283,6 +282,7 @@ def generate(use_prompt_generator=True, prompt_input="Create a unique children's
             print("\n--- Starting Text-to-Speech Generation with Kokoro ---")
             try:
                 # First collect and clean the complete story
+                from src.generators.story_generator import retry_story_generation, collect_complete_story
                 complete_story = collect_complete_story(story_text)
 
                 # Check if we have enough segments for a complete story
