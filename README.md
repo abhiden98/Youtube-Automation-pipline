@@ -226,7 +226,7 @@ The simplest way to run the entire pipeline is to execute the main.py file direc
 
 ```python
 # Run the main program
-!python src/main.py
+!python main.py
 ```
 
 That's it! The program will:
