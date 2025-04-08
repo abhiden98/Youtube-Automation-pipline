@@ -184,3 +184,77 @@ os.environ['GEMINI_API_KEY'] = "YOUR_API_KEY_HERE"
 1. Install dependencies: `pip install -r requirements.txt`
 2. Set your Gemini API key in main.py
 3. Run the application: `python main.py`
+
+## Google Colab Usage
+
+You can run this entire project directly in Google Colab. Copy the cells below to your Colab notebook:
+
+### 1. Clone the repository
+
+```python
+# Clone the repository
+!git clone https://github.com/abhiden98/Youtube-Automation-pipline.git
+%cd Youtube-Automation-pipline
+```
+
+### 2. Install dependencies
+
+```python
+# Install required packages
+!pip install -q google-generativeai
+!pip install -q google-api-python-client
+!pip install -q soundfile
+!pip install -q kokoro
+!apt-get update
+!apt-get install -y ffmpeg
+```
+
+### 3. Set up your Google Drive (for storage)
+
+```python
+# Mount Google Drive for storing outputs
+from google.colab import drive
+drive.mount('/content/drive')
+
+# Create output directory
+!mkdir -p /content/drive/MyDrive/AI_Stories
+```
+
+### 4. Set your API keys
+
+```python
+# Set your Gemini API key
+import os
+os.environ['GEMINI_API_KEY'] = "YOUR_GEMINI_API_KEY"
+
+# Test the configuration
+!python -c "import os; from google import genai; genai.configure(api_key=os.environ['GEMINI_API_KEY']); print('API key configured successfully!')"
+```
+
+### 5. Run the story generator
+
+```python
+# Import and run the main generator
+from src.services.main_generator import generate
+
+# Generate a story with default settings
+result = generate(use_prompt_generator=True)
+
+# Display the generated video if available
+from IPython.display import HTML
+if result['output_path'] and os.path.exists(result['output_path']):
+    video_path = result['output_path']
+    print(f"Video generated at: {video_path}")
+    HTML(f"""
+    <video width="640" height="360" controls>
+      <source src="{video_path}" type="video/mp4">
+    </video>
+    """)
+```
+
+### 6. Explore results in Google Drive
+
+Your generated videos, thumbnails, and metadata will be available in your Google Drive under the folder structure created during the upload process.
+
+## Pipeline Flow
+{{ ... }}
