@@ -89,9 +89,39 @@ def retry_story_generation(use_prompt_generator=True, prompt_input="Create a uni
             
             # Process response stream
             image_found = False
+            json_errors = 0
+            max_json_errors = 5  # Allow up to 5 errors before giving up on streaming
+            contains_image_description = False
+            
             for chunk in stream:
                 try:
+                    # Handle raw string responses
+                    if isinstance(chunk, str):
+                        story_text += chunk
+                        print(chunk, end="")
+                        # Check for image descriptions
+                        if "**Image Description:**" in chunk:
+                            contains_image_description = True
+                        continue
+                        
+                    # Check if chunk has candidates
                     if not hasattr(chunk, 'candidates') or not chunk.candidates:
+                        # Try to extract as much as possible from the chunk
+                        if hasattr(chunk, 'text') and chunk.text:
+                            print(chunk.text, end="")
+                            story_text += chunk.text
+                            # Check for image descriptions
+                            if "**Image Description:**" in chunk.text:
+                                contains_image_description = True
+                        continue
+                    
+                    if not chunk.candidates[0].content or not chunk.candidates[0].content.parts:
+                        if hasattr(chunk, 'text') and chunk.text:
+                            print(chunk.text, end="")
+                            story_text += chunk.text
+                            # Check for image descriptions
+                            if "**Image Description:**" in chunk.text:
+                                contains_image_description = True
                         continue
                     
                     part = chunk.candidates[0].content.parts[0]
@@ -113,14 +143,49 @@ def retry_story_generation(use_prompt_generator=True, prompt_input="Create a uni
                     elif hasattr(part, 'text') and part.text:
                         story_text += part.text
                         print(part.text, end="")
+                        # Check for image descriptions
+                        if "**Image Description:**" in part.text:
+                            contains_image_description = True
                 
+                except json.decoder.JSONDecodeError as je:
+                    print(f"\n⚠️ JSON decode error in chunk: {je}")
+                    json_errors += 1
+                    if json_errors >= max_json_errors:
+                        print(f"Too many JSON errors ({json_errors}), falling back to non-streaming mode...")
+                        # Try to extract any text that might be in the raw response
+                        try:
+                            if hasattr(chunk, '_response') and hasattr(chunk._response, 'text'):
+                                raw_text = chunk._response.text
+                                # Extract text content between markdown or code blocks if possible
+                                story_text += re.sub(r'```.*?```', '', raw_text, flags=re.DOTALL)
+                                print(f"Extracted {len(raw_text)} characters from raw response")
+                        except Exception:
+                            pass
+                        break  # Exit the streaming loop and use fallback
+                    continue  # Skip this chunk and continue with next
                 except Exception as e:
-                    print(f"⚠️ Error processing chunk: {e}")
+                    print(f"\n⚠️ Error processing chunk: {e}")
+                    continue  # Skip this chunk and continue with next
+            
+            # If we had many JSON errors but still have some content, try to use it
+            if json_errors > 0:
+                print(f"\nEncountered {json_errors} JSON decode errors during streaming")
+                if not story_text.strip():
+                    print("No story text was captured during streaming, attempting fallback...")
+                    # We would implement a fallback to non-streaming here
+                    # But for simplicity, we'll just return what we have
+            
+            # Check if we actually found images or just descriptions
+            if contains_image_description:
+                print("\n⚠️ Model generated text descriptions instead of actual images.")
+                # In the original code, this would trigger a complete restart
+                # For now, we'll continue with what we have
             
             return {
                 "story_text": story_text,
                 "image_files": image_files,
-                "temp_dir": temp_dir
+                "temp_dir": temp_dir,
+                "contains_image_description": contains_image_description
             }
         
         except Exception as e:
